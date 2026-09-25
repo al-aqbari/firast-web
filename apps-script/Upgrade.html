@@ -1,0 +1,643 @@
+<!-- ======================================================================
+     CITYCOT SIS — UPGRADE PACK (v2)
+     Dashboard refresh · AI assistant · AI briefing · AI letter drafting ·
+     Command palette (Ctrl+K) · Dark mode · AI Settings admin page.
+
+     Install: add this file to the Apps Script project as "Upgrade" (HTML),
+     then put this one line just before </body> in Index.html:
+         <?!= include('Upgrade'); ?>
+     It builds on the globals Index.html already defines (STATE, PAGES,
+     ADMIN_PAGES, api, can, gotoPage, renderAll, kpi, panel, esc …).
+     ====================================================================== -->
+<style>
+/* ---------- dark theme: the same tokens, re-pointed ---------- */
+html[data-theme="dark"]{
+  --navy:#7FB8DF; --navy-700:#A9D0EC; --navy-900:#CFE4F4;
+  --brand:#4EA3DB; --brand-700:#7FB8DF; --brand-500:#4E97CE; --brand-300:#2B6A94;
+  --brand-100:#12324A; --brand-50:#0F2638;
+  --red:#F2676C; --red-100:#3A1618; --orange:#F0A24B; --orange-100:#3A2A12;
+  --green:#4ADE80; --green-100:#12301E; --gold:#E3B341;
+  --ink:#E6EEF5; --ink-2:#B7C7D5; --ink-3:#8398AA;
+  --bg:#0B1622; --card:#122131; --line:#223549; --grid:#1C2D3F;
+  color-scheme: dark;
+}
+html[data-theme="dark"] body{ background:var(--bg); color:var(--ink); }
+html[data-theme="dark"] .panel, html[data-theme="dark"] .kpi, html[data-theme="dark"] .modal,
+html[data-theme="dark"] .side, html[data-theme="dark"] .slicerbar, html[data-theme="dark"] .actionbox,
+html[data-theme="dark"] .gresults, html[data-theme="dark"] .notifpanel, html[data-theme="dark"] .umenu,
+html[data-theme="dark"] .tablescroll, html[data-theme="dark"] .qabar .qbtn{
+  background:var(--card) !important; color:var(--ink); border-color:var(--line) !important;
+}
+html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea{
+  background:#0E1B29; color:var(--ink); border-color:var(--line);
+}
+html[data-theme="dark"] table.dt th{ background:#0F2638; color:var(--ink-2); }
+html[data-theme="dark"] table.dt td{ border-color:var(--line); }
+html[data-theme="dark"] .snav{ color:var(--ink-2); }
+html[data-theme="dark"] .snav.active{ background:var(--brand-100); color:#fff; }
+
+/* ---------- dashboard polish ---------- */
+.kpi{ transition:transform .18s ease, box-shadow .18s ease; }
+.kpi:hover{ transform:translateY(-2px); box-shadow:0 10px 24px rgba(4,71,111,.12); }
+.panel{ transition:box-shadow .18s ease; }
+.panel:hover{ box-shadow:0 8px 22px rgba(4,71,111,.08); }
+#pageBody{ animation:v2fade .28s ease; }
+@keyframes v2fade{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+
+/* hero */
+.v2hero{ position:relative; overflow:hidden; border-radius:18px; padding:22px 24px; margin-bottom:16px;
+  color:#fff; background:
+    radial-gradient(1200px 300px at 110% -40%, rgba(255,255,255,.18), transparent 60%),
+    radial-gradient(500px 200px at -10% 120%, rgba(228,12,24,.35), transparent 60%),
+    linear-gradient(120deg,#032C47 0%,#04476F 45%,#006CA8 100%);
+  display:grid; grid-template-columns:1fr auto; gap:18px; align-items:center;
+  box-shadow:0 14px 34px rgba(3,44,71,.25); }
+.v2hero h2{ margin:0 0 4px; font-size:22px; font-weight:700; letter-spacing:-.01em; color:#fff; }
+.v2hero .v2date{ font-size:12.5px; opacity:.85; }
+.v2hero .v2chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.v2chip{ background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.22); border-radius:999px;
+  padding:6px 12px; font-size:12px; backdrop-filter:blur(4px); }
+.v2chip b{ font-size:14px; margin-right:4px; }
+.v2hero .v2actions{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+.v2btn{ border:none; border-radius:10px; padding:8px 14px; font:600 12.5px inherit; cursor:pointer;
+  background:#fff; color:#04476F; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+.v2btn.ghost{ background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.3); box-shadow:none; }
+.v2btn:hover{ filter:brightness(1.06); }
+.v2btn:disabled{ opacity:.6; cursor:wait; }
+.v2gauge{ text-align:center; min-width:150px; }
+.v2gauge .glbl{ font-size:11.5px; opacity:.85; margin-top:4px; }
+.v2gauge svg text{ fill:#fff; font-weight:700; }
+
+/* insights */
+.v2insights{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-bottom:16px; }
+.v2ins{ background:var(--card,#fff); border:1px solid var(--line,#DDE7EF); border-left:4px solid var(--brand,#006CA8);
+  border-radius:12px; padding:12px 14px; cursor:default; }
+.v2ins[data-goto]{ cursor:pointer; }
+.v2ins[data-goto]:hover{ box-shadow:0 6px 16px rgba(4,71,111,.10); }
+.v2ins.s-high{ border-left-color:var(--red,#C1252B); }
+.v2ins.s-medium{ border-left-color:var(--orange,#B45309); }
+.v2ins.s-low{ border-left-color:var(--green,#15803D); }
+.v2ins .t{ font-weight:700; font-size:13px; color:var(--ink,#0E2433); display:flex; gap:6px; align-items:center; }
+.v2ins .d{ font-size:12px; color:var(--ink-2,#3D5568); margin-top:4px; line-height:1.45; }
+.v2ai{ background:linear-gradient(135deg,var(--brand-50,#F2F8FD),var(--card,#fff));
+  border:1px solid var(--brand-100,#DEEDF8); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+.v2ai h3{ margin:0 0 6px; font-size:14px; color:var(--navy,#04476F); display:flex; align-items:center; gap:8px; }
+.v2ai h3 .sp{ flex:1; }
+.v2ai .sum{ font-size:13px; color:var(--ink,#0E2433); line-height:1.55; }
+.v2ai ol{ margin:8px 0 0 18px; padding:0; font-size:12.5px; color:var(--ink-2,#3D5568); line-height:1.55; }
+.v2ai .meta{ font-size:11px; color:var(--ink-3,#74899B); margin-top:8px; }
+.v2badge{ font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px;
+  background:linear-gradient(90deg,#7C3AED,#006CA8); color:#fff; letter-spacing:.02em; }
+
+/* ---------- AI assistant ---------- */
+.v2fab{ position:fixed; right:22px; bottom:22px; z-index:900; width:56px; height:56px; border-radius:50%;
+  border:none; cursor:pointer; font-size:24px; color:#fff;
+  background:linear-gradient(135deg,#7C3AED,#006CA8); box-shadow:0 10px 26px rgba(0,108,168,.45);
+  transition:transform .18s ease; }
+.v2fab:hover{ transform:scale(1.07); }
+.v2drawer{ position:fixed; right:22px; bottom:90px; z-index:901; width:min(420px,calc(100vw - 32px));
+  height:min(620px,calc(100vh - 120px)); background:var(--card,#fff); color:var(--ink,#0E2433);
+  border:1px solid var(--line,#DDE7EF); border-radius:18px; box-shadow:0 24px 60px rgba(3,44,71,.28);
+  display:flex; flex-direction:column; overflow:hidden; transform-origin:bottom right;
+  transition:transform .2s ease, opacity .2s ease; }
+.v2drawer.closed{ transform:scale(.92); opacity:0; pointer-events:none; }
+.v2dhead{ padding:14px 16px; color:#fff; background:linear-gradient(120deg,#04476F,#006CA8 60%,#7C3AED);
+  display:flex; align-items:center; gap:10px; }
+.v2dhead b{ font-size:14px; } .v2dhead span{ font-size:11px; opacity:.85; display:block; }
+.v2dhead .sp{ flex:1; }
+.v2dhead button{ background:rgba(255,255,255,.15); border:none; color:#fff; border-radius:8px; padding:4px 9px; cursor:pointer; }
+.v2msgs{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; background:var(--bg,#F2F6FA); }
+.v2m{ max-width:88%; padding:9px 12px; border-radius:14px; font-size:13px; line-height:1.5; word-wrap:break-word; }
+.v2m.u{ align-self:flex-end; background:var(--brand,#006CA8); color:#fff; border-bottom-right-radius:4px; }
+.v2m.a{ align-self:flex-start; background:var(--card,#fff); border:1px solid var(--line,#DDE7EF); border-bottom-left-radius:4px; }
+.v2m.a p{ margin:0 0 6px; } .v2m.a p:last-child{ margin:0; }
+.v2m.a ul{ margin:4px 0 6px 18px; padding:0; }
+.v2m.a table{ border-collapse:collapse; font-size:12px; margin:6px 0; }
+.v2m.a td,.v2m.a th{ border:1px solid var(--line,#DDE7EF); padding:3px 6px; }
+.v2m.err{ border-color:var(--red,#C1252B); color:var(--red,#C1252B); }
+.v2typing span{ display:inline-block; width:6px; height:6px; margin:0 2px; border-radius:50%; background:var(--ink-3,#74899B);
+  animation:v2dot 1s infinite ease-in-out; }
+.v2typing span:nth-child(2){ animation-delay:.15s; } .v2typing span:nth-child(3){ animation-delay:.3s; }
+@keyframes v2dot{ 0%,80%,100%{ opacity:.25; transform:translateY(0);} 40%{ opacity:1; transform:translateY(-3px);} }
+.v2sugg{ display:flex; flex-wrap:wrap; gap:6px; padding:8px 12px 0; background:var(--card,#fff); }
+.v2sugg button{ border:1px solid var(--brand-100,#DEEDF8); background:var(--brand-50,#F2F8FD); color:var(--brand,#006CA8);
+  font-size:11.5px; border-radius:999px; padding:4px 10px; cursor:pointer; }
+.v2input{ display:flex; gap:8px; padding:10px 12px 12px; background:var(--card,#fff); border-top:1px solid var(--line,#DDE7EF); }
+.v2input textarea{ flex:1; resize:none; height:42px; border-radius:10px; border:1px solid var(--line,#DDE7EF);
+  padding:10px; font:13px inherit; }
+.v2input button{ border:none; border-radius:10px; padding:0 14px; background:var(--brand,#006CA8); color:#fff; font-weight:700; cursor:pointer; }
+.v2note{ font-size:10.5px; color:var(--ink-3,#74899B); padding:0 12px 8px; background:var(--card,#fff); }
+
+/* ---------- command palette ---------- */
+.v2pal{ position:fixed; inset:0; z-index:1000; background:rgba(3,20,34,.45); backdrop-filter:blur(3px);
+  display:flex; align-items:flex-start; justify-content:center; padding-top:12vh; }
+.v2pal.hidden{ display:none; }
+.v2palbox{ width:min(620px,calc(100vw - 32px)); background:var(--card,#fff); border-radius:16px; overflow:hidden;
+  box-shadow:0 30px 80px rgba(0,0,0,.35); border:1px solid var(--line,#DDE7EF); }
+.v2palbox input{ width:100%; box-sizing:border-box; border:none; border-bottom:1px solid var(--line,#DDE7EF);
+  padding:16px 18px; font-size:15px; outline:none; background:transparent; color:var(--ink,#0E2433); }
+.v2pallist{ max-height:52vh; overflow-y:auto; padding:6px; }
+.v2palit{ display:flex; gap:10px; align-items:center; padding:9px 12px; border-radius:10px; cursor:pointer; font-size:13px; color:var(--ink,#0E2433); }
+.v2palit small{ margin-left:auto; color:var(--ink-3,#74899B); font-size:11px; }
+.v2palit.on{ background:var(--brand-50,#F2F8FD); outline:1px solid var(--brand-100,#DEEDF8); }
+.v2palhint{ font-size:11px; color:var(--ink-3,#74899B); padding:8px 14px; border-top:1px solid var(--line,#DDE7EF); }
+
+/* ---------- AI settings page ---------- */
+.v2form{ display:grid; gap:12px; max-width:560px; }
+.v2form label{ font-size:12px; font-weight:600; color:var(--ink-2,#3D5568); display:block; margin-bottom:4px; }
+.v2form input, .v2form select{ width:100%; box-sizing:border-box; padding:9px 10px; border-radius:9px; border:1px solid var(--line,#DDE7EF); }
+
+@media (max-width:760px){
+  .v2hero{ grid-template-columns:1fr; }
+  .v2gauge{ display:none; }
+  .v2fab{ right:14px; bottom:14px; }
+  .v2drawer{ right:16px; bottom:80px; }
+}
+@media print{ .v2fab, .v2drawer, .v2pal, .v2hero .v2actions{ display:none !important; } }
+</style>
+
+<button class="v2fab hidden" id="v2Fab" title="Ask HR AI (Ctrl+J)">✨</button>
+<div class="v2drawer closed" id="v2Drawer" aria-hidden="true">
+  <div class="v2dhead">
+    <div style="font-size:22px">✨</div>
+    <div><b>HR AI Assistant</b><span id="v2AiState">Ask anything about your workforce</span></div>
+    <div class="sp"></div>
+    <button id="v2Clear" title="New conversation">↺</button>
+    <button id="v2Close" title="Close">✕</button>
+  </div>
+  <div class="v2msgs" id="v2Msgs"></div>
+  <div class="v2sugg" id="v2Sugg"></div>
+  <div class="v2input">
+    <textarea id="v2Ask" placeholder="Ask in English or Somali…  (Enter to send)"></textarea>
+    <button id="v2Send">➤</button>
+  </div>
+  <div class="v2note">AI answers can be wrong — check important figures against the records.</div>
+</div>
+
+<div class="v2pal hidden" id="v2Pal">
+  <div class="v2palbox">
+    <input id="v2PalInput" placeholder="Jump to a page, an employee or an action…" autocomplete="off">
+    <div class="v2pallist" id="v2PalList"></div>
+    <div class="v2palhint">↑ ↓ to move · Enter to open · Esc to close · Ctrl+K anywhere</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  STATE.ai = { status:null, loading:false, chat:[], busy:false, briefing:null, briefingAt:'', briefingBusy:false };
+
+  /* ============================ THEME ============================ */
+  function lsGet(k){ try { return window.localStorage.getItem(k); } catch(e){ return null; } }
+  function lsSet(k, v){ try { window.localStorage.setItem(k, v); } catch(e){} }
+  function applyTheme(t){
+    document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+    var b = $('v2Theme'); if(b) b.textContent = t === 'dark' ? '☀️' : '🌙';
+  }
+  applyTheme(lsGet('ccu-theme') || 'light');
+
+  function addTopbarButtons(){
+    var refresh = $('btnRefresh');
+    if(!refresh || $('v2Theme')) return;
+    var cmd = document.createElement('button');
+    cmd.className = 'iconbtn'; cmd.id = 'v2Cmd'; cmd.title = 'Command palette (Ctrl+K)';
+    cmd.textContent = '⌘K';
+    cmd.addEventListener('click', openPalette);
+    var theme = document.createElement('button');
+    theme.className = 'iconbtn'; theme.id = 'v2Theme'; theme.title = 'Light / dark mode';
+    theme.addEventListener('click', function(){
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      lsSet('ccu-theme', next); applyTheme(next);
+    });
+    refresh.parentNode.insertBefore(cmd, refresh);
+    refresh.parentNode.insertBefore(theme, refresh);
+    applyTheme(lsGet('ccu-theme') || 'light');
+  }
+  addTopbarButtons();
+
+  /* ============================ AI STATUS ============================ */
+  function loadAiStatus(){
+    if(!STATE.token || STATE.ai.loading) return Promise.resolve();
+    STATE.ai.loading = true;
+    return api('apiAiStatus', []).then(function(res){
+      STATE.ai.loading = false;
+      if(res && res.ok) STATE.ai.status = res;
+      refreshAiChrome();
+    }).catch(function(){ STATE.ai.loading = false; });
+  }
+  function aiOn(){ return !!(STATE.ai.status && STATE.ai.status.enabled); }
+  function refreshAiChrome(){
+    var fab = $('v2Fab');
+    if(fab) fab.classList.toggle('hidden', !(STATE.token && can('viewDashboard')));
+    var st = $('v2AiState');
+    if(st) st.textContent = aiOn() ? ('Powered by Claude · ' + STATE.ai.status.model)
+                                   : 'AI is off — an administrator can switch it on';
+    addLetterAiButton();
+  }
+
+  /* Hook into the sidebar build: it runs right after sign-in and on every page change. */
+  var _buildSideNav = buildSideNav;
+  buildSideNav = function(){
+    _buildSideNav.apply(this, arguments);
+    if(STATE.token && !STATE.ai.status && !STATE.ai.loading) loadAiStatus();
+    refreshAiChrome();
+  };
+
+  /* ============================ EXECUTIVE OVERVIEW v2 ============================ */
+  function greeting(){
+    var h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  }
+  function daysTo(d){
+    if(!d) return null;
+    var t = new Date(String(d).slice(0,10) + 'T00:00:00');
+    if(isNaN(t.getTime())) return null;
+    var n = new Date(); n.setHours(0,0,0,0);
+    return Math.round((t - n) / 86400000);
+  }
+
+  /** 0-100: data completeness, verification, contract safety and active share. */
+  function healthScore(R){
+    if(!R.length) return { score:0, parts:[] };
+    var completeness = Math.round(R.reduce(function(s,r){ return s + (Number(r._pct)||0); }, 0) / R.length);
+    var verified = pct(R.filter(function(r){ return String(r.qualificationVerification||'').toLowerCase() === 'verified'; }).length, R.length);
+    var risky = R.filter(function(r){ var d = daysTo(r.contractEndDate); return d !== null && d <= 30 && isActive(r); }).length;
+    var contractSafe = 100 - pct(risky, R.length);
+    var activeShare = pct(R.filter(isActive).length, R.length);
+    var score = Math.round(completeness*0.35 + verified*0.25 + contractSafe*0.25 + activeShare*0.15);
+    return { score:score, parts:[
+      ['Data completeness', completeness], ['Qualifications verified', verified],
+      ['Contracts safe (30 days)', contractSafe], ['Active workforce', activeShare] ] };
+  }
+  function gaugeSvg(score){
+    var r = 52, c = 2 * Math.PI * r, off = c * (1 - score/100);
+    var col = score >= 80 ? '#4ADE80' : score >= 60 ? '#FBBF24' : '#F87171';
+    return '<svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="HR health score ' + score + '">' +
+      '<circle cx="70" cy="70" r="' + r + '" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="12"/>' +
+      '<circle cx="70" cy="70" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="12" stroke-linecap="round"' +
+      ' stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '" transform="rotate(-90 70 70)"/>' +
+      '<text x="70" y="76" text-anchor="middle" font-size="30">' + score + '</text>' +
+      '<text x="70" y="96" text-anchor="middle" font-size="10" style="font-weight:500;opacity:.8">out of 100</text></svg>';
+  }
+
+  function heroHtml(R){
+    var me = STATE.me || {};
+    var first = String(me.fullName || '').split(/\s+/)[0] || '';
+    var active = R.filter(isActive).length;
+    var campuses = {}; R.forEach(function(r){ if(r.campus) campuses[r.campus] = 1; });
+    var joined30 = R.filter(function(r){ var d = daysTo(r.dateOfJoining); return d !== null && d <= 0 && d >= -30; }).length;
+    var h = healthScore(R);
+    var dateTxt = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    return '<div class="v2hero">' +
+      '<div><h2>' + greeting() + (first ? ', ' + esc(first) : '') + ' 👋</h2>' +
+      '<div class="v2date">' + esc(dateTxt) + ' · ' + esc(me.role || '') +
+        (me.campusScope ? ' · ' + esc(me.campusScope) + ' campus' : ' · All campuses') + '</div>' +
+      '<div class="v2chips">' +
+        '<span class="v2chip"><b>' + R.length + '</b>employees in view</span>' +
+        '<span class="v2chip"><b>' + active + '</b>active</span>' +
+        '<span class="v2chip"><b>' + Object.keys(campuses).length + '</b>campuses</span>' +
+        '<span class="v2chip"><b>' + joined30 + '</b>joined in last 30 days</span>' +
+      '</div>' +
+      '<div class="v2actions">' +
+        '<button class="v2btn" data-v2="ask">✨ Ask HR AI</button>' +
+        '<button class="v2btn ghost" data-v2="brief">' + (STATE.ai.briefingBusy ? 'Writing briefing…' : '🧠 AI Briefing') + '</button>' +
+        '<button class="v2btn ghost" data-v2="palette">⌘K Quick jump</button>' +
+      '</div></div>' +
+      '<div class="v2gauge" title="' + esc(h.parts.map(function(p){ return p[0] + ': ' + p[1] + '%'; }).join('\n')) + '">' +
+        gaugeSvg(h.score) + '<div class="glbl">HR Health Score</div></div>' +
+    '</div>';
+  }
+
+  /** Rule-based insights — instant, and they work even when AI is off. */
+  function smartInsights(R){
+    var out = [];
+    var exp30 = R.filter(function(r){ var d = daysTo(r.contractEndDate); return d !== null && d >= 0 && d <= 30; }).length;
+    if(exp30) out.push({ s:'high', i:'⏳', t: exp30 + ' contract' + (exp30>1?'s':'') + ' end within 30 days',
+      d:'Start renewal or exit decisions now so nobody works without a valid contract.', g:'p11' });
+    var lapsed = R.filter(function(r){ var d = daysTo(r.contractEndDate); return d !== null && d < 0 && isActive(r); }).length;
+    if(lapsed) out.push({ s:'high', i:'⚠️', t: lapsed + ' active employee' + (lapsed>1?'s':'') + ' with an expired contract',
+      d:'Their contract end date has passed but they are still marked Active.', g:'p11' });
+    var unv = R.filter(function(r){ return String(r.qualificationVerification||'').toLowerCase() !== 'verified'; }).length;
+    if(unv) out.push({ s: pct(unv, R.length) > 30 ? 'medium' : 'low', i:'🎓',
+      t: pct(unv, R.length) + '% of qualifications not verified', d: unv + ' employee records still need verification.', g:'p4' });
+    var avg = R.length ? Math.round(R.reduce(function(s,r){ return s + (Number(r._pct)||0); }, 0) / R.length) : 100;
+    if(avg < 85) out.push({ s: avg < 70 ? 'medium' : 'low', i:'📊', t:'Records are ' + avg + '% complete on average',
+      d:'Filling missing fields improves every report and letter.', g:'p8' });
+    var prob = R.filter(function(r){ return /probation/i.test(r.employmentStatus); }).length;
+    if(prob) out.push({ s:'low', i:'🔵', t: prob + ' on probation', d:'Plan confirmation reviews before probation ends.', g:'p6' });
+    var f = R.filter(function(r){ return /female/i.test(r.gender); }).length;
+    if(R.length >= 10 && pct(f, R.length) < 30) out.push({ s:'medium', i:'⚖️', t:'Women are ' + pct(f, R.length) + '% of staff',
+      d:'Consider gender balance in the next recruitment round.', g:'p7' });
+    if(!out.length) out.push({ s:'low', i:'✅', t:'All clear', d:'No risks detected in the current filter.', g:'' });
+    return out.slice(0, 6);
+  }
+  function insightsHtml(R){
+    return '<div class="v2insights">' + smartInsights(R).map(function(x){
+      return '<div class="v2ins s-' + x.s + '"' + (x.g ? ' data-goto="' + x.g + '"' : '') + '>' +
+        '<div class="t">' + x.i + ' ' + esc(x.t) + '</div><div class="d">' + esc(x.d) + '</div></div>';
+    }).join('') + '</div>';
+  }
+  function briefingHtml(){
+    var b = STATE.ai.briefing;
+    if(!b) return '';
+    return '<div class="v2ai"><h3>🧠 AI Executive Briefing <span class="v2badge">AI</span><span class="sp"></span>' +
+      '<button class="btn" data-v2="brief">↻ Refresh</button></h3>' +
+      '<div class="sum">' + esc(b.summary) + '</div>' +
+      (b.risks && b.risks.length ? '<div class="v2insights" style="margin:12px 0 0">' + b.risks.map(function(r){
+        return '<div class="v2ins s-' + esc(r.severity) + '"><div class="t">' + esc(r.title) + '</div><div class="d">' + esc(r.detail) + '</div></div>';
+      }).join('') + '</div>' : '') +
+      (b.recommendations && b.recommendations.length ? '<div style="margin-top:12px;font-weight:700;font-size:12.5px;color:var(--navy)">Recommended actions</div><ol>' +
+        b.recommendations.map(function(t){ return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>' : '') +
+      '<div class="meta">Generated ' + esc(STATE.ai.briefingAt) + ' from the records you are allowed to see. Check figures before acting.</div></div>';
+  }
+
+  var execPage = PAGES.filter(function(p){ return p.id === 'p1'; })[0];
+  if(execPage){
+    var _exec = execPage.render;
+    execPage.title = 'Executive Overview';
+    execPage.render = function(R){ return heroHtml(R) + briefingHtml() + insightsHtml(R) + _exec(R); };
+  }
+
+  function runBriefing(){
+    if(!aiOn()){ toast('AI is not switched on yet — see Administration → AI Settings.', 'bad'); return; }
+    if(STATE.ai.briefingBusy) return;
+    STATE.ai.briefingBusy = true;
+    if(STATE.view === 'p1') renderAll();
+    toast('Writing the AI briefing — this can take up to a minute…');
+    api('apiAiInsights', []).then(function(res){
+      STATE.ai.briefingBusy = false;
+      if(!res || !res.ok){ toast((res && res.message) || 'AI briefing failed.', 'bad'); if(STATE.view === 'p1') renderAll(); return; }
+      STATE.ai.briefing = res.briefing; STATE.ai.briefingAt = res.generatedAt;
+      if(STATE.view === 'p1') renderAll();
+      toast('AI briefing ready.', 'ok');
+    }).catch(function(err){
+      STATE.ai.briefingBusy = false; if(STATE.view === 'p1') renderAll();
+      toast('AI briefing failed: ' + ((err && err.message) || err), 'bad');
+    });
+  }
+
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-v2]');
+    if(!b) return;
+    var what = b.getAttribute('data-v2');
+    if(what === 'ask') openDrawer();
+    if(what === 'brief') runBriefing();
+    if(what === 'palette') openPalette();
+    if(what === 'saveai') saveAiSettings(false);
+    if(what === 'offai') saveAiSettings(true);
+  });
+
+  /* ============================ AI CHAT ============================ */
+  var SUGGESTIONS = [
+    'Whose contracts end in the next 60 days?',
+    'Summarise headcount by campus and division',
+    'Which records have unverified qualifications?',
+    'Imisa shaqaale ah ayaa firfircoon (active)?'
+  ];
+
+  /** Small, safe markdown: escape first, then bold, bullets, headings, tables. */
+  function md(text){
+    var lines = String(text||'').split('\n'), html = '', list = false, tbl = [];
+    function inline(s){ return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>'); }
+    function flushTable(){
+      if(!tbl.length) return;
+      var rows = tbl.filter(function(l){ return !/^\s*\|?\s*:?-{2,}/.test(l); });
+      html += '<table>' + rows.map(function(l, i){
+        var cells = l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|');
+        var tag = i === 0 ? 'th' : 'td';
+        return '<tr>' + cells.map(function(c){ return '<' + tag + '>' + inline(c.trim()) + '</' + tag + '>'; }).join('') + '</tr>';
+      }).join('') + '</table>';
+      tbl = [];
+    }
+    lines.forEach(function(l){
+      if(/^\s*\|.*\|\s*$/.test(l)){ if(list){ html += '</ul>'; list = false; } tbl.push(l); return; }
+      flushTable();
+      var m = l.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)$/);
+      if(m){ if(!list){ html += '<ul>'; list = true; } html += '<li>' + inline(m[1]) + '</li>'; return; }
+      if(list){ html += '</ul>'; list = false; }
+      var h = l.match(/^#{1,4}\s+(.*)$/);
+      if(h){ html += '<p><b>' + inline(h[1]) + '</b></p>'; return; }
+      if(l.trim()) html += '<p>' + inline(l) + '</p>';
+    });
+    flushTable();
+    if(list) html += '</ul>';
+    return html;
+  }
+
+  function renderChat(){
+    var box = $('v2Msgs');
+    var html = '';
+    if(!STATE.ai.chat.length){
+      html = '<div class="v2m a">' + (aiOn()
+        ? '<p>Salaan! 👋 I am your HR AI assistant.</p><p>Ask me about headcount, contracts, qualifications, campuses — in English or Somali.</p>'
+        : '<p>The AI assistant is not switched on yet.</p><p>' + (STATE.ai.status && STATE.ai.status.canManage
+            ? 'Open <b>Administration → AI Settings</b> to add your Anthropic API key.'
+            : 'Ask a system administrator to switch it on under AI Settings.') + '</p>') + '</div>';
+    }
+    html += STATE.ai.chat.map(function(m){
+      return m.role === 'user' ? '<div class="v2m u">' + esc(m.text).replace(/\n/g,'<br>') + '</div>'
+        : '<div class="v2m a' + (m.error ? ' err' : '') + '">' + md(m.text) + '</div>';
+    }).join('');
+    if(STATE.ai.busy) html += '<div class="v2m a v2typing"><span></span><span></span><span></span></div>';
+    box.innerHTML = html;
+    box.scrollTop = box.scrollHeight;
+    $('v2Sugg').innerHTML = STATE.ai.chat.length || !aiOn() ? '' : SUGGESTIONS.map(function(s){
+      return '<button data-sugg="' + esc(s) + '">' + esc(s) + '</button>'; }).join('');
+  }
+
+  function openDrawer(){
+    $('v2Drawer').classList.remove('closed');
+    $('v2Drawer').setAttribute('aria-hidden', 'false');
+    if(!STATE.ai.status) loadAiStatus().then(renderChat);
+    renderChat();
+    setTimeout(function(){ $('v2Ask').focus(); }, 60);
+  }
+  function closeDrawer(){
+    $('v2Drawer').classList.add('closed');
+    $('v2Drawer').setAttribute('aria-hidden', 'true');
+  }
+
+  function ask(q){
+    q = String(q||'').trim();
+    if(!q || STATE.ai.busy) return;
+    if(!aiOn()){ toast('AI is not switched on yet.', 'bad'); return; }
+    var history = STATE.ai.chat.filter(function(m){ return !m.error; })
+      .map(function(m){ return { role:m.role, text:m.text }; });
+    STATE.ai.chat.push({ role:'user', text:q });
+    STATE.ai.busy = true;
+    $('v2Ask').value = '';
+    renderChat();
+    api('apiAiAsk', [q, history]).then(function(res){
+      STATE.ai.busy = false;
+      if(!res || !res.ok) STATE.ai.chat.push({ role:'assistant', text:(res && res.message) || 'Something went wrong.', error:true });
+      else STATE.ai.chat.push({ role:'assistant', text:res.answer });
+      renderChat();
+    }).catch(function(err){
+      STATE.ai.busy = false;
+      STATE.ai.chat.push({ role:'assistant', text:'Request failed: ' + ((err && err.message) || err), error:true });
+      renderChat();
+    });
+  }
+
+  $('v2Fab').addEventListener('click', function(){
+    if($('v2Drawer').classList.contains('closed')) openDrawer(); else closeDrawer();
+  });
+  $('v2Close').addEventListener('click', closeDrawer);
+  $('v2Clear').addEventListener('click', function(){ STATE.ai.chat = []; renderChat(); });
+  $('v2Send').addEventListener('click', function(){ ask($('v2Ask').value); });
+  $('v2Ask').addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); ask($('v2Ask').value); }
+  });
+  $('v2Sugg').addEventListener('click', function(e){
+    var b = e.target.closest('[data-sugg]'); if(b) ask(b.getAttribute('data-sugg'));
+  });
+
+  /* ============================ COMMAND PALETTE ============================ */
+  var palItems = [], palSel = 0;
+  function paletteSource(q){
+    q = String(q||'').trim().toLowerCase();
+    var items = [];
+    if(can('viewDashboard')) PAGES.forEach(function(p){
+      if(p.perm && !can(p.perm)) return;
+      items.push({ icon:p.icon, label:p.title, hint:'Page', run:function(){ gotoPage(p.id); } });
+    });
+    if(can('viewDirectory')) items.push({ icon:'📋', label:'Staff Directory', hint:'Records', run:function(){ gotoPage('dir'); } });
+    ADMIN_PAGES.forEach(function(p){
+      if(can(p.perm)) items.push({ icon:p.icon, label:p.title, hint:'Administration', run:function(){ gotoPage(p.id); } });
+    });
+    if(can('viewDashboard')) items.push({ icon:'✨', label:'Ask HR AI', hint:'AI', run:openDrawer });
+    if(can('viewDashboard')) items.push({ icon:'🧠', label:'Generate AI executive briefing', hint:'AI',
+      run:function(){ gotoPage('p1'); runBriefing(); } });
+    items.push({ icon:'🌓', label:'Toggle dark mode', hint:'View', run:function(){ $('v2Theme') && $('v2Theme').click(); } });
+    var list = q ? items.filter(function(it){ return it.label.toLowerCase().indexOf(q) !== -1; }) : items;
+    if(q && q.length >= 2 && STATE.records && STATE.records.length){
+      STATE.records.filter(function(r){
+        return [r.employeeId, r.fullName, r.jobTitle, r.phoneNumber].join(' ').toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 8).forEach(function(r){
+        list.push({ icon:'👤', label:r.fullName + ' — ' + r.employeeId, hint:r.jobTitle || 'Employee',
+          run:function(){ var rec = recById(r.employeeId); if(rec) openDetail(rec); } });
+      });
+    }
+    return list.slice(0, 40);
+  }
+  function drawPalette(){
+    palItems = paletteSource($('v2PalInput').value);
+    if(palSel >= palItems.length) palSel = Math.max(0, palItems.length - 1);
+    $('v2PalList').innerHTML = palItems.length ? palItems.map(function(it, i){
+      return '<div class="v2palit' + (i === palSel ? ' on' : '') + '" data-pi="' + i + '"><span>' + it.icon + '</span>' +
+        '<span>' + esc(it.label) + '</span><small>' + esc(it.hint) + '</small></div>';
+    }).join('') : '<div class="v2palit">Nothing matches.</div>';
+    var on = $('v2PalList').querySelector('.on'); if(on) on.scrollIntoView({ block:'nearest' });
+  }
+  function openPalette(){
+    if(!STATE.token) return;
+    $('v2Pal').classList.remove('hidden');
+    $('v2PalInput').value = ''; palSel = 0; drawPalette();
+    setTimeout(function(){ $('v2PalInput').focus(); }, 20);
+  }
+  function closePalette(){ $('v2Pal').classList.add('hidden'); }
+  function runPal(i){ var it = palItems[i]; if(!it) return; closePalette(); it.run(); }
+
+  $('v2PalInput').addEventListener('input', function(){ palSel = 0; drawPalette(); });
+  $('v2PalInput').addEventListener('keydown', function(e){
+    if(e.key === 'ArrowDown'){ e.preventDefault(); palSel = Math.min(palSel + 1, palItems.length - 1); drawPalette(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); palSel = Math.max(palSel - 1, 0); drawPalette(); }
+    else if(e.key === 'Enter'){ e.preventDefault(); runPal(palSel); }
+    else if(e.key === 'Escape'){ closePalette(); }
+  });
+  $('v2PalList').addEventListener('click', function(e){
+    var it = e.target.closest('[data-pi]'); if(it) runPal(Number(it.getAttribute('data-pi')));
+  });
+  $('v2Pal').addEventListener('click', function(e){ if(e.target === $('v2Pal')) closePalette(); });
+  document.addEventListener('keydown', function(e){
+    var k = String(e.key || '').toLowerCase();
+    if((e.ctrlKey || e.metaKey) && k === 'k'){ e.preventDefault(); openPalette(); }
+    if((e.ctrlKey || e.metaKey) && k === 'j' && STATE.token && can('viewDashboard')){ e.preventDefault(); openDrawer(); }
+    if(k === 'escape' && !$('v2Drawer').classList.contains('closed')) closeDrawer();
+  });
+
+  /* ============================ AI LETTER DRAFTING ============================ */
+  function addLetterAiButton(){
+    if($('btnAiLetter') || !can('manageLetters')) return;
+    var foot = document.querySelector('#letterOverlay .mfoot');
+    if(!foot) return;
+    var b = document.createElement('button');
+    b.className = 'btn'; b.id = 'btnAiLetter';
+    b.title = 'Let AI write the body — the Extra details box becomes its instructions';
+    b.innerHTML = '✨ Draft with AI';
+    b.addEventListener('click', aiDraftLetter);
+    foot.insertBefore(b, foot.children[1] || null);
+  }
+  function aiDraftLetter(){
+    var employeeId = $('ltEmployee').value, type = $('ltType').value;
+    if(!employeeId){ toast('Choose an employee first.', 'bad'); return; }
+    if(!type){ toast('Choose a letter type first.', 'bad'); return; }
+    if(!aiOn()){ toast('AI is not switched on yet — see Administration → AI Settings.', 'bad'); return; }
+    loader(true, 'AI is drafting the letter…');
+    api('apiAiDraftLetter', [employeeId, type, $('ltExtra').value]).then(function(res){
+      loader(false);
+      if(!res || !res.ok){ toast((res && res.message) || 'Could not draft the letter.', 'bad'); return; }
+      STATE.editingLetter = res.letterId;
+      $('ltBody').value = htmlToPlainText_(res.body);
+      $('letterMeta').textContent = 'AI draft ' + res.letterId + ' — review every line, then Save Draft or Send Email.';
+      $('btnSaveLetterDraft').disabled = false;
+      $('btnSendLetter').disabled = !can('manageLetters');
+      toast(res.message, 'ok');
+      return loadLetters(true);
+    }).catch(function(err){ loader(false); toast('Failed: ' + ((err && err.message) || err), 'bad'); });
+  }
+
+  /* ============================ AI SETTINGS (admin) ============================ */
+  var MODELS = [
+    ['claude-opus-5', 'Claude Opus 5 — most capable (recommended)'],
+    ['claude-sonnet-5', 'Claude Sonnet 5 — faster, lower cost'],
+    ['claude-haiku-4-5', 'Claude Haiku 4.5 — fastest, lowest cost']
+  ];
+  function pageAiSettings(){
+    var s = STATE.ai.status || {};
+    var model = s.model || 'claude-opus-5';
+    return panel('AI Assistant', '✨', 'Connects the system to Claude by Anthropic for the chat assistant, the executive briefing and letter drafting.',
+      '<div class="v2form">' +
+        '<div><label>Status</label><div>' + (s.enabled
+          ? '<span class="pill p-active">On</span> &nbsp;key ending ' + esc(s.keyHint || '')
+          : '<span class="pill p-inactive">Off</span>') + '</div></div>' +
+        '<div><label for="v2Key">Anthropic API key</label>' +
+          '<input type="password" id="v2Key" autocomplete="off" placeholder="' + (s.enabled ? 'Leave blank to keep the current key' : 'sk-ant-…') + '"></div>' +
+        '<div><label for="v2Model">Model</label><select id="v2Model">' + MODELS.map(function(m){
+          return '<option value="' + m[0] + '"' + (m[0] === model ? ' selected' : '') + '>' + esc(m[1]) + '</option>';
+        }).join('') + '</select></div>' +
+        '<div style="display:flex;gap:8px"><button class="btn send" data-v2="saveai">Save</button>' +
+          (s.enabled ? '<button class="btn" data-v2="offai">Switch AI off</button>' : '') + '</div>' +
+      '</div>') +
+      panel('Privacy', '🔒', '',
+        '<div style="font-size:12.5px;line-height:1.6;color:var(--ink-2)">' +
+        'When someone uses an AI feature, a summary of the staff records <b>they are already allowed to see</b> is sent to the Anthropic API ' +
+        '(campus-scoped users only send their campus; salary is only included for roles with the salary permission). ' +
+        'The key is stored in Script Properties, never in the sheet or the browser. Every AI action is written to the Audit Log.</div>');
+  }
+  function saveAiSettings(off){
+    var key = off ? '' : (($('v2Key') && $('v2Key').value.trim()) || (STATE.ai.status && STATE.ai.status.enabled ? '__keep__' : ''));
+    if(!off && !key){ toast('Paste the API key first.', 'bad'); return; }
+    var model = off ? '' : $('v2Model').value;
+    loader(true, 'Saving AI settings…');
+    api('apiAiSaveKey', [key, model]).then(function(res){
+      loader(false);
+      if(!res || !res.ok){ toast((res && res.message) || 'Could not save.', 'bad'); return; }
+      toast(res.message, 'ok');
+      STATE.ai.status = null;
+      return loadAiStatus().then(function(){ renderAll(); });
+    }).catch(function(err){ loader(false); toast('Save failed: ' + ((err && err.message) || err), 'bad'); });
+  }
+  ADMIN_PAGES.push({ id:'u7', icon:'✨', title:'AI Settings', sub:'Switch the AI assistant on or off and choose the model',
+    perm:'manageUsers', render:pageAiSettings });
+
+  var _gotoPage = gotoPage;
+  gotoPage = function(id){
+    if(id === 'u7' && !STATE.ai.status) loadAiStatus().then(function(){ if(STATE.view === 'u7') renderAll(); });
+    return _gotoPage.apply(this, arguments);
+  };
+
+  refreshAiChrome();
+})();
+</script>
